@@ -1,0 +1,497 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  EDITOR
+  REPORTER
+  READER
+}
+
+enum ApplicationStatus {
+  PENDING
+  REVIEWING
+  SHORTLISTED
+  REJECTED
+  HIRED
+}
+
+enum NewsSubmissionStatus {
+  PENDING
+  REVIEWING
+  APPROVED
+  REJECTED
+}
+
+enum NewsletterStatus {
+  ACTIVE
+  UNSUBSCRIBED
+}
+
+enum ArticleStatus {
+  DRAFT
+  PENDING
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CommentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AdPosition {
+  HEADER
+  HOMEPAGE_TOP
+  HOMEPAGE_SIDEBAR
+  ARTICLE_TOP
+  ARTICLE_SIDEBAR
+  FOOTER
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  name                String
+  email               String               @unique
+  password            String
+  role                UserRole             @default(REPORTER)
+  avatar              String?
+  bio                 String?              @db.Text
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  slug                String?              @unique
+  adminPermission     AdminPermission?
+  articles            Article[]
+  comments            Comment[]
+  media               Media[]
+  auditLogs           AuditLog[]
+  savedNews           SavedNews[]
+  readingHistory      ReadingHistory[]
+  notifications       Notification[]
+  passwordResetTokens PasswordResetToken[]
+  videos              Video[]
+}
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  description String?    @db.Text
+  image       String?
+  isActive    Boolean    @default(true)
+  sortOrder   Int        @default(0)
+  parentId    String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  galleries   Gallery[]
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryTree")
+  articles    Article[]
+}
+
+model Article {
+  id             String        @id @default(cuid())
+  title          String
+  slug           String        @unique
+  excerpt        String?       @db.Text
+  content        String        @db.Text
+  coverImage     String?
+  status         ArticleStatus @default(DRAFT)
+  isFeatured     Boolean       @default(false)
+  isBreaking     Boolean       @default(false)
+  isTrending     Boolean       @default(false)
+  viewCount      Int           @default(0)
+  seoTitle       String?
+  seoDescription String?       @db.Text
+  seoKeywords    String?
+
+  authorId   String
+  categoryId String
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  author         User             @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  category       Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  tags           ArticleTag[]
+  comments       Comment[]
+  savedBy        SavedNews[]
+  readingHistory ReadingHistory[]
+  videos         Video[]
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([isFeatured])
+  @@index([isBreaking])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  articles ArticleTag[]
+}
+
+model ArticleTag {
+  articleId String
+  tagId     String
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+}
+
+model Media {
+  id           String   @id @default(cuid())
+  fileName     String
+  fileUrl      String
+  fileType     String
+  fileSize     Int
+  altText      String?
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  uploadedBy    User           @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  galleryImages GalleryImage[]
+}
+
+model Comment {
+  id        String        @id @default(cuid())
+  name      String
+  email     String
+  content   String        @db.Text
+  status    CommentStatus @default(PENDING)
+  articleId String
+  userId    String?
+  createdAt DateTime      @default(now())
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([articleId, status])
+}
+
+model Advertisement {
+  id        String     @id @default(cuid())
+  title     String
+  imageUrl  String?
+  targetUrl String?
+  position  AdPosition
+  isActive  Boolean    @default(true)
+  startDate DateTime?
+  endDate   DateTime?
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model SiteSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}
+
+model Epaper {
+  id          String    @id @default(cuid())
+  title       String
+  slug        String?   @unique
+  editionDate DateTime
+  pdfUrl      String
+  coverImage  String?
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([editionDate])
+  @@index([isPublished, publishedAt])
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  details   String?  @db.Text
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ========================================
+// SAVED NEWS / BOOKMARK
+// ========================================
+
+model SavedNews {
+  id        String   @id @default(cuid())
+  userId    String
+  articleId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId, createdAt])
+  @@index([articleId])
+}
+
+// ========================================
+// READING HISTORY
+// ========================================
+
+model ReadingHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  articleId String
+  viewedAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([userId, viewedAt])
+  @@index([articleId])
+}
+
+// ========================================
+// USER NOTIFICATIONS
+// ========================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String   @db.Text
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+// ========================================
+// PASSWORD RESET TOKENS
+// ========================================
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ========================================
+// NEWSLETTER SUBSCRIBERS
+// ========================================
+
+model NewsletterSubscriber {
+  id               String           @id @default(cuid())
+  email            String           @unique
+  status           NewsletterStatus @default(ACTIVE)
+  unsubscribeToken String           @unique @default(cuid())
+  subscribedAt     DateTime         @default(now())
+  unsubscribedAt   DateTime?
+  updatedAt        DateTime         @updatedAt
+
+  @@index([status])
+}
+
+// ========================================
+// CAREER / JOBS
+// ========================================
+
+model Career {
+  id             String    @id @default(cuid())
+  title          String
+  slug           String    @unique
+  department     String?
+  location       String?
+  employmentType String?
+  description    String    @db.Text
+  requirements   String?   @db.Text
+  salary         String?
+  deadline       DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  applications CareerApplication[]
+
+  @@index([isActive, createdAt])
+  @@index([deadline])
+}
+
+// ========================================
+// CAREER APPLICATIONS
+// ========================================
+
+model CareerApplication {
+  id          String            @id @default(cuid())
+  careerId    String
+  name        String
+  email       String
+  phone       String
+  resumeUrl   String?
+  coverLetter String?           @db.Text
+  status      ApplicationStatus @default(PENDING)
+  adminNotes  String?           @db.Text
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  career Career @relation(fields: [careerId], references: [id], onDelete: Cascade)
+
+  @@index([careerId, status])
+  @@index([email])
+  @@index([createdAt])
+}
+
+// ========================================
+// NEWS SUBMISSIONS
+// ========================================
+
+model NewsSubmission {
+  id        String               @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  title     String
+  content   String               @db.Text
+  source    String?
+  status    NewsSubmissionStatus @default(PENDING)
+  adminNote String?              @db.Text
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  @@index([status, createdAt])
+  @@index([email])
+}
+
+// ========================================
+// PHOTO GALLERY
+// ========================================
+model Gallery {
+  id          String  @id @default(cuid())
+  title       String
+  slug        String  @unique
+  description String? @db.Text
+  coverImage  String?
+
+  categoryId  String?
+  isFeatured  Boolean   @default(false)
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images   GalleryImage[]
+
+  @@index([isPublished, publishedAt])
+  @@index([categoryId])
+  @@index([isFeatured])
+}
+
+model GalleryImage {
+  id        String @id @default(cuid())
+  galleryId String
+  mediaId   String
+
+  title       String?
+  description String? @db.Text
+  caption     String?
+  altText     String?
+  isFeatured  Boolean @default(false)
+  sortOrder   Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  gallery Gallery @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  media   Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([galleryId, mediaId])
+  @@index([galleryId, sortOrder])
+  @@index([isFeatured])
+}
+
+// ========================================
+// VIDEO NEWS
+// ========================================
+
+model Video {
+  id           String    @id @default(cuid())
+  title        String
+  slug         String    @unique
+  description  String?   @db.Text
+  videoUrl     String
+  thumbnail    String?
+  duration     Int?
+  isPublished  Boolean   @default(false)
+  publishedAt  DateTime?
+  articleId    String?
+  uploadedById String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  article    Article? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  uploadedBy User     @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([isPublished, publishedAt])
+  @@index([articleId])
+  @@index([uploadedById])
+}
+
+model AdminPermission {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  canViewUsers        Boolean @default(false)
+  canEditUsers        Boolean @default(false)
+  canChangeUserRoles  Boolean @default(false)
+  canDeleteUsers      Boolean @default(false)
+  canChangeUserStatus Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
